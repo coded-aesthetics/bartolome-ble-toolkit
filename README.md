@@ -2,6 +2,8 @@
 
 A modular Go library for working with Bluetooth Low Energy devices, specifically designed for Columbus Video Pens and Timeular trackers. Built with robust connection management, automatic reconnection, and clean, reusable APIs.
 
+Check this blog post for more info: (https://www.coded-aesthetics.com/posts/bartolome-ble-toolkit/)[https://www.coded-aesthetics.com/posts/bartolome-ble-toolkit/]
+
 ## 🚀 Features
 
 - **Modular Design**: Independent packages for different device types
