@@ -1,8 +1,8 @@
-module github.com/coded-aesthetics/bartolome-ble-toolkit
+module test-external
 
 go 1.21
 
-require tinygo.org/x/bluetooth v0.10.0
+require github.com/coded-aesthetics/bartolome-ble-toolkit v0.1.0
 
 require (
 	github.com/go-ole/go-ole v1.3.0 // indirect
@@ -15,4 +15,7 @@ require (
 	github.com/tinygo-org/pio v0.0.0-20231216154340-cd888eb58899 // indirect
 	golang.org/x/exp v0.0.0-20230728194245-b0cb94b80691 // indirect
 	golang.org/x/sys v0.15.0 // indirect
+	tinygo.org/x/bluetooth v0.10.0 // indirect
 )
+
+replace github.com/coded-aesthetics/bartolome-ble-toolkit => ..

@@ -214,10 +214,13 @@ func (d *Device) pollDeviceState() error {
 
 	// Read data from characteristic
 	data := make([]byte, 12) // Timeular typically sends 12-byte data
-	err := d.characteristic.Read(data)
+	n, err := d.characteristic.Read(data)
 	if err != nil {
 		return fmt.Errorf("failed to read characteristic: %v", err)
 	}
+
+	// Trim data to actual bytes read
+	data = data[:n]
 
 	// Process the data
 	return d.ProcessSideData(data)
