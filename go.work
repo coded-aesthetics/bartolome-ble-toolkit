@@ -1,0 +1,12 @@
+go 1.21
+
+use (
+	.
+	./bluetooth_connector
+	./columbus
+	./country_resolver
+	./examples
+	./timeular
+	./timeular_side_resolver
+	./utils
+)
