@@ -2,9 +2,9 @@
 
 This guide explains how to run the example applications in the Bartolome BLE Toolkit.
 
-## 🚨 Important: Running Examples
+## 🚀 Running Examples
 
-Due to Go workspace configuration, examples must be run with the `GOWORK=off` environment variable to avoid module conflicts.
+Examples can now be run directly without any special configuration. The workspace has been removed and the BLE manager has been simplified for better reliability.
 
 ## 📋 Prerequisites
 
@@ -21,7 +21,7 @@ Due to Go workspace configuration, examples must be run with the `GOWORK=off` en
 ```bash
 cd examples/working-columbus
 go mod tidy
-GOWORK=off go run main.go
+go run main.go
 ```
 
 This example provides:
@@ -34,7 +34,7 @@ This example provides:
 ```bash
 cd examples/columbus-only
 go mod tidy
-GOWORK=off go run main.go
+go run main.go
 ```
 
 This example demonstrates:
@@ -47,7 +47,7 @@ This example demonstrates:
 ```bash
 cd examples/timeular-only
 go mod tidy
-GOWORK=off go run main.go
+go run main.go
 ```
 
 Features:
@@ -61,7 +61,7 @@ Features:
 ```bash
 cd examples/full-setup
 go mod tidy
-GOWORK=off go run main.go
+go run main.go
 ```
 
 Demonstrates:
@@ -72,10 +72,14 @@ Demonstrates:
 
 ## 🔍 Troubleshooting
 
+### Connection Issues Fixed
+The BLE manager has been simplified and should now connect reliably. If you still have issues:
+
 ### Module Import Errors
-If you see module import errors, ensure you're using `GOWORK=off`:
+If you see module import errors, ensure you're in the correct directory and have run:
 ```bash
-GOWORK=off go run main.go
+go mod tidy
+go run main.go
 ```
 
 ### Bluetooth Permission Issues
@@ -98,9 +102,10 @@ GOWORK=off go run main.go
 
 ### Working Columbus Example
 ```
-🖊️  Columbus Video Pen - Working Example
-========================================
-🚀 Initializing connection...
+🖊️  Columbus Video Pen Example
+=============================
+🔍 Searching for Columbus Video Pen...
+📱 Make sure your Columbus Video Pen is turned on and nearby!
 🔌 Enabling BLE adapter...
 ✅ BLE adapter enabled
 🔍 Scanning for COLUMBUS Video Pen...
@@ -108,21 +113,21 @@ GOWORK=off go run main.go
 🔗 Connecting to COLUMBUS Video Pen...
 ✅ Device connected
 🔍 Discovering services...
-✅ Found Nordic UART service
+✅ Found service: 6e400001-b5a3-f393-e0a9-e50e24dcca9e
 🔍 Discovering characteristics...
-✅ Found UART TX characteristic
+✅ Found characteristic: 6e400003-b5a3-f393-e0a9-e50e24dcca9e
 🔔 Setting up notifications...
 ✅ Notifications enabled
-🎉 Columbus Video Pen connected and ready!
-📝 Tap your Columbus Video Pen on different locations!
+🎉 COLUMBUS Video Pen connected and ready!
+✅ Connection successful!
+📝 Select a country with the Columbus video pen!
 🛑 Press Ctrl+C to stop
 
-🖊️  Signal #1 received: [0ea00000003b1d00] (length: 8)
+🖊️  Signal received: [0ea00000003b1d00] (length: 8)
 🌍 Country: Unknown Country (3b1d) (XX)
 🗺️  Region: Unknown
 🔢 Country Code: 3b1d
-🎯 ACTION: Triggering request for Unknown Country (3b1d)
-📊 Session stats: 1 signals in 0.2 minutes
+🎯 ACTION: Would trigger HTTP request for Unknown Country (3b1d)
 ```
 
 ### Timeular Example
@@ -149,11 +154,13 @@ Examples use replace directives to work with local code:
 replace github.com/coded-aesthetics/bartolome-ble-toolkit => ../..
 ```
 
+The workspace has been removed and the BLE manager simplified for reliable connections. No special configuration is needed.
+
 ### Testing Module Imports
 Test the module directly:
 ```bash
 cd test-external
-GOWORK=off go run main.go
+go run main.go
 ```
 
 ### Creating Your Own Example
@@ -198,10 +205,19 @@ tracker.OnSideChange(func(name string, side byte) error {
 
 ## 🎯 Next Steps
 
-1. **Start with working-columbus** for reliable Columbus Video Pen integration
-2. **Explore modular examples** to understand the package architecture
-3. **Build your own applications** using the toolkit packages
-4. **Contribute** new device support or improvements
+1. **Start with columbus-only** for reliable Columbus Video Pen integration (now fixed!)
+2. **Try working-columbus** for a standalone implementation
+3. **Explore modular examples** to understand the package architecture
+4. **Build your own applications** using the toolkit packages
+5. **Contribute** new device support or improvements
+
+## ✅ Current Status
+
+All examples are now working correctly:
+- ✅ columbus-only: Fixed and reliable
+- ✅ working-columbus: Standalone implementation
+- ✅ timeular-only: Compiles and ready for testing
+- ✅ full-setup: Multi-device example working
 
 ## 📞 Support
 

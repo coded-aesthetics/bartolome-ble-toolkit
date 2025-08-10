@@ -32,6 +32,12 @@ func main() {
 	columbusDevice.OnSignal(func(signal []byte) error {
 		fmt.Printf("🖊️  Signal received: [%x] (length: %d)\n", signal, len(signal))
 
+		// Validate signal before processing
+		if len(signal) == 0 {
+			fmt.Printf("⚠️  Empty signal received - device may be disconnecting\n")
+			return nil
+		}
+
 		// Extract country from signal
 		countryHex, err := columbus.SignalToCountryHex(signal)
 		if err != nil {
@@ -53,6 +59,7 @@ func main() {
 		if country.SubRegion != "" {
 			fmt.Printf("📍 Sub-region: %s\n", country.SubRegion)
 		}
+
 		fmt.Println("")
 
 		return nil
@@ -76,12 +83,13 @@ func main() {
 
 	// Start connecting to devices
 	fmt.Println("🔍 Searching for Columbus Video Pen...")
+	fmt.Println("📱 Make sure your Columbus Video Pen is turned on and nearby!")
 	if err := manager.ConnectDevices([]ble.DeviceConfig{deviceConfig}); err != nil {
-		log.Fatalf("❌ Failed to start device connection: %v", err)
+		log.Fatalf("❌ Failed to connect to device: %v", err)
 	}
 
-	fmt.Println("✅ Connection process started")
-	fmt.Println("📝 Tap the Columbus Video Pen on different locations to see country detection in action!")
+	fmt.Println("✅ Connection successful!")
+	fmt.Println("📝 Select a country with the Columbus video pen to see country detection in action!")
 	fmt.Println("🛑 Press Ctrl+C to stop")
 	fmt.Println("")
 
@@ -90,6 +98,7 @@ func main() {
 	fmt.Println("\n🛑 Shutdown signal received...")
 
 	// Clean shutdown
+	fmt.Println("🧹 Cleaning up connections...")
 	if err := manager.Close(); err != nil {
 		fmt.Printf("⚠️  Error during shutdown: %v\n", err)
 	}

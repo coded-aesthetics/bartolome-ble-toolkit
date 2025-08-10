@@ -21,7 +21,7 @@ func main() {
 
 	// Create a single Timeular device with custom configuration
 	timeularDevice := timeular.NewDeviceWithConfig(timeular.Config{
-		Name:         "My Timeular Tracker",
+		Name:         "Timeular Tra",
 		PollInterval: 500 * time.Millisecond, // Poll every 500ms for faster response
 	})
 

@@ -19,8 +19,8 @@ const (
 var (
 	// ServiceUUID is the custom Timeular service UUID
 	ServiceUUID = bluetooth.NewUUID([16]byte{0xc7, 0xe7, 0x00, 0x10, 0xc8, 0x47, 0x11, 0xe6, 0x81, 0x75, 0x8c, 0x89, 0xa5, 0x5d, 0x40, 0x3c})
-	// CharacteristicUUID is the Timeular characteristic UUID for data
-	CharacteristicUUID = bluetooth.NewUUID([16]byte{0xc7, 0xe7, 0x00, 0x11, 0xc8, 0x47, 0x11, 0xe6, 0x81, 0x75, 0x8c, 0x89, 0xa5, 0x5d, 0x40, 0x3c})
+	// CharacteristicUUID is the Timeular characteristic UUID for side data (single byte)
+	CharacteristicUUID = bluetooth.NewUUID([16]byte{0xc7, 0xe7, 0x00, 0x12, 0xc8, 0x47, 0x11, 0xe6, 0x81, 0x75, 0x8c, 0x89, 0xa5, 0x5d, 0x40, 0x3c})
 )
 
 // SideChangeHandler defines the function signature for handling side changes
@@ -155,15 +155,14 @@ func (d *Device) ProcessNotification(deviceName string, data []byte) error {
 
 // ProcessSideData processes raw data from the Timeular device to determine the current side
 func (d *Device) ProcessSideData(data []byte) error {
-	// Validate data
-	if err := ValidateTimeularData(data); err != nil {
-		return fmt.Errorf("invalid data: %v", err)
+	// For the single-byte side characteristic, validation is simpler
+	if len(data) != 1 {
+		return fmt.Errorf("invalid side data length: expected 1 byte, got %d", len(data))
 	}
 
-	// Resolve side from data
-	side, err := ResolveSide(data)
-	if err != nil {
-		return fmt.Errorf("failed to resolve side: %v", err)
+	side := data[0]
+	if side < 1 || side > 8 {
+		return fmt.Errorf("invalid side value: %d (must be 1-8)", side)
 	}
 
 	// Update sides
@@ -212,8 +211,8 @@ func (d *Device) pollDeviceState() error {
 		return fmt.Errorf("characteristic not available")
 	}
 
-	// Read data from characteristic
-	data := make([]byte, 12) // Timeular typically sends 12-byte data
+	// Read data from characteristic (single byte for side data)
+	data := make([]byte, 1)
 	n, err := d.characteristic.Read(data)
 	if err != nil {
 		return fmt.Errorf("failed to read characteristic: %v", err)
@@ -251,20 +250,14 @@ func (d *Device) Reset() {
 
 // ResolveSide resolves the current side from Timeular device data
 func ResolveSide(data []byte) (byte, error) {
-	if err := ValidateTimeularData(data); err != nil {
-		return 0, err
+	// For the single-byte side characteristic, the data IS the side
+	if len(data) != 1 {
+		return 0, fmt.Errorf("invalid side data length: expected 1 byte, got %d", len(data))
 	}
 
-	// Timeular side resolution logic
-	// This is a simplified version - adjust based on actual Timeular protocol
-
-	// Calculate side based on data pattern
-	// Different algorithms can be implemented here based on your specific needs
-	side := calculateSideFromData(data)
-
-	// Ensure side is in valid range (1-8 for octagon)
+	side := data[0]
 	if side < 1 || side > 8 {
-		return 0, fmt.Errorf("invalid side calculated: %d", side)
+		return 0, fmt.Errorf("invalid side value: %d (must be 1-8)", side)
 	}
 
 	return side, nil
@@ -272,17 +265,11 @@ func ResolveSide(data []byte) (byte, error) {
 
 // calculateSideFromData implements the core algorithm for determining the side
 func calculateSideFromData(data []byte) byte {
-	// Simple implementation - replace with actual Timeular algorithm
-	// This could involve analyzing accelerometer data, magnetometer data, etc.
-
-	// For demonstration, use a simple hash-based approach
-	sum := byte(0)
-	for i, b := range data {
-		sum += b * byte(i+1)
+	// For the single-byte side characteristic, the data IS the side
+	if len(data) >= 1 {
+		return data[0]
 	}
-
-	side := (sum % 8) + 1 // Sides 1-8
-	return side
+	return 1 // Default fallback
 }
 
 // FormatDataAsHex converts Timeular data to hex string format for debugging
@@ -296,21 +283,15 @@ func ValidateTimeularData(data []byte) error {
 		return fmt.Errorf("empty data")
 	}
 
-	if len(data) != 12 {
-		return fmt.Errorf("invalid data length: expected 12 bytes, got %d", len(data))
+	// For side data, we expect exactly 1 byte
+	if len(data) != 1 {
+		return fmt.Errorf("invalid side data length: expected 1 byte, got %d", len(data))
 	}
 
-	// Check if data is not all zeros (which indicates invalid state)
-	allZero := true
-	for _, b := range data {
-		if b != 0 {
-			allZero = false
-			break
-		}
-	}
-
-	if allZero {
-		return fmt.Errorf("invalid data: all zeros")
+	// Validate side value is in range 1-8
+	side := data[0]
+	if side < 1 || side > 8 {
+		return fmt.Errorf("invalid side value: %d (must be 1-8)", side)
 	}
 
 	return nil

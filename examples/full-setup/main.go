@@ -158,7 +158,7 @@ func main() {
 
 	fmt.Println("✅ Connection process started")
 	fmt.Println("📝 Instructions:")
-	fmt.Println("   - Tap the Columbus Video Pen on different locations")
+	fmt.Println("   - Select a country with the Columbus video pen")
 	fmt.Println("   - Rotate the Timeular devices to different sides")
 	fmt.Println("   - Watch as the system combines all inputs!")
 	fmt.Printf("   - Timeular devices support sides 1-%d\n", timeular.GetSupportedSides())

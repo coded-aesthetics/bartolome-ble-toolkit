@@ -41,7 +41,7 @@ package main
 import (
     "fmt"
     "log"
-    
+
     "github.com/coded-aesthetics/bartolome-ble-toolkit/pkg/ble"
     "github.com/coded-aesthetics/bartolome-ble-toolkit/pkg/columbus"
     "github.com/coded-aesthetics/bartolome-ble-toolkit/pkg/countries"
@@ -63,7 +63,7 @@ func main() {
     // Configure and connect
     deviceConfig := ble.DeviceConfig{
         Name:               columbusDevice.GetName(),
-        ServiceUUID:        columbusDevice.GetServiceUUID(), 
+        ServiceUUID:        columbusDevice.GetServiceUUID(),
         CharacteristicUUID: columbusDevice.GetCharacteristicUUID(),
         NotificationHandler: columbusDevice.ProcessNotification,
     }
@@ -209,7 +209,7 @@ func (d *Device) IsRunning() bool
 func (d *Device) Stop()
 func (d *Device) Reset()
 
-// Utility functions  
+// Utility functions
 func ResolveSide(data []byte) (byte, error)
 func ValidateTimeularData(data []byte) error
 ```
@@ -317,7 +317,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Ensure Bluetooth is enabled
 - Try running with `sudo` (not recommended for production)
 
-**"Connection timeout"** 
+**"Connection timeout"**
 - Ensure devices are powered on and nearby
 - Check that devices aren't connected to other applications
 - Verify device names match exactly
@@ -345,7 +345,3 @@ columbus.OnSignal(func(signal []byte) error {
 - Create an issue on GitHub for bugs or feature requests
 - Check existing issues for known problems and solutions
 - See examples/ directory for working code references
-
----
-
-Built with ❤️ for the BLE community
