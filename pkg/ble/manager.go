@@ -11,12 +11,16 @@ import (
 	"tinygo.org/x/bluetooth"
 )
 
-// SimpleManager handles BLE device connections with a focus on reliability
+// SimpleManager handles BLE device connections with automatic reconnect support
 type SimpleManager struct {
 	adapter           *bluetooth.Adapter
 	connected         map[string]*SimpleDevice
+	addressToName     map[string]string
+	pendingConfigs    map[string]DeviceConfig
 	disconnectHandler func(deviceName string, address string, err error)
 	mu                sync.RWMutex
+	enabled           bool
+	closing           bool
 }
 
 // SimpleDevice represents a connected BLE device
@@ -25,14 +29,24 @@ type SimpleDevice struct {
 	Address        bluetooth.Address
 	Device         *bluetooth.Device
 	Channel        <-chan []byte
+	rawChannel     chan []byte
 	disconnectFunc func()
+	closeOnce      sync.Once
+}
+
+func (d *SimpleDevice) closeChannel() {
+	d.closeOnce.Do(func() {
+		close(d.rawChannel)
+	})
 }
 
 // NewSimpleManager creates a new simplified BLE manager
 func NewSimpleManager() *SimpleManager {
 	return &SimpleManager{
-		adapter:   bluetooth.DefaultAdapter,
-		connected: make(map[string]*SimpleDevice),
+		adapter:        bluetooth.DefaultAdapter,
+		connected:      make(map[string]*SimpleDevice),
+		addressToName:  make(map[string]string),
+		pendingConfigs: make(map[string]DeviceConfig),
 	}
 }
 
@@ -43,9 +57,16 @@ func (m *SimpleManager) SetDisconnectHandler(handler func(deviceName string, add
 	m.disconnectHandler = handler
 }
 
-// ConnectToDevice connects to a single device by name and service UUID
-func (m *SimpleManager) ConnectToDevice(deviceName string, serviceUUID, characteristicUUID bluetooth.UUID, notificationHandler func(string, []byte) error) error {
-	// Enable adapter
+// enable initializes the BLE adapter and registers the connect/disconnect handler.
+// Must be called before any Connect calls.
+func (m *SimpleManager) enable() error {
+	m.mu.Lock()
+	if m.enabled {
+		m.mu.Unlock()
+		return nil
+	}
+	m.mu.Unlock()
+
 	fmt.Println("🔌 Enabling BLE adapter...")
 	if err := m.adapter.Enable(); err != nil {
 		return fmt.Errorf("failed to enable adapter: %v", err)
@@ -55,40 +76,132 @@ func (m *SimpleManager) ConnectToDevice(deviceName string, serviceUUID, characte
 	time.Sleep(2 * time.Second)
 	fmt.Println("✅ BLE adapter enabled")
 
-	// Scan for device
-	fmt.Printf("🔍 Scanning for %s...\n", deviceName)
-	result, err := m.scanForDevice(deviceName)
+	// Must be set before adapter.Connect() calls per tinygo/bluetooth docs
+	m.adapter.SetConnectHandler(func(device bluetooth.Device, connected bool) {
+		if !connected {
+			m.handleDisconnect(device)
+		}
+	})
+
+	m.mu.Lock()
+	m.enabled = true
+	m.mu.Unlock()
+
+	return nil
+}
+
+// handleDisconnect is called by the adapter when a peripheral disconnects.
+func (m *SimpleManager) handleDisconnect(device bluetooth.Device) {
+	addrStr := device.Address.UUID.String()
+
+	m.mu.Lock()
+	name, ok := m.addressToName[addrStr]
+	if !ok {
+		m.mu.Unlock()
+		return
+	}
+
+	simpleDevice := m.connected[name]
+	config, hasConfig := m.pendingConfigs[name]
+	isClosing := m.closing
+
+	delete(m.connected, name)
+	delete(m.addressToName, addrStr)
+	m.mu.Unlock()
+
+	// Close the channel to unblock the handleNotifications goroutine
+	if simpleDevice != nil {
+		simpleDevice.closeChannel()
+	}
+
+	fmt.Printf("⚠️  Device %s [%s] disconnected\n", name, addrStr)
+
+	if m.disconnectHandler != nil {
+		m.disconnectHandler(name, addrStr, nil)
+	}
+
+	if hasConfig && !isClosing {
+		fmt.Printf("🔄 Will attempt to reconnect to %s...\n", name)
+		go m.reconnectLoop(config)
+	}
+}
+
+// reconnectLoop continuously attempts to reconnect until successful or closing.
+func (m *SimpleManager) reconnectLoop(config DeviceConfig) {
+	for {
+		m.mu.RLock()
+		isClosing := m.closing
+		m.mu.RUnlock()
+
+		if isClosing {
+			return
+		}
+
+		time.Sleep(3 * time.Second)
+
+		fmt.Printf("🔄 Reconnecting to %s...\n", config.Name)
+		if err := m.connectDevice(config); err != nil {
+			fmt.Printf("❌ Reconnect to %s failed: %v\n", config.Name, err)
+			continue
+		}
+
+		fmt.Printf("✅ Reconnected to %s!\n", config.Name)
+		return
+	}
+}
+
+// ConnectToDevice connects to a single device by name and service UUID
+func (m *SimpleManager) ConnectToDevice(deviceName string, serviceUUID, characteristicUUID bluetooth.UUID, notificationHandler func(string, []byte) error) error {
+	if err := m.enable(); err != nil {
+		return err
+	}
+
+	config := DeviceConfig{
+		Name:                deviceName,
+		ServiceUUID:         serviceUUID,
+		CharacteristicUUID:  characteristicUUID,
+		NotificationHandler: notificationHandler,
+	}
+
+	m.mu.Lock()
+	m.pendingConfigs[deviceName] = config
+	m.mu.Unlock()
+
+	return m.connectDevice(config)
+}
+
+// connectDevice performs the scan + connect + notification setup for one device.
+func (m *SimpleManager) connectDevice(config DeviceConfig) error {
+	result, err := m.scanForDevice(config.Name)
 	if err != nil {
 		return err
 	}
 
-	// Connect to device
-	fmt.Printf("🔗 Connecting to %s [%s]...\n", deviceName, result.Address.String())
-	device, channel, err := m.connectAndSetup(result, serviceUUID, characteristicUUID)
+	fmt.Printf("🔗 Connecting to %s [%s]...\n", config.Name, result.Address.String())
+	device, rawChannel, err := m.connectAndSetup(result, config.ServiceUUID, config.CharacteristicUUID)
 	if err != nil {
 		return err
 	}
 
-	// Create simple device wrapper
 	simpleDevice := &SimpleDevice{
-		Name:    deviceName,
-		Address: result.Address,
-		Device:  device,
-		Channel: (<-chan []byte)(channel),
+		Name:       config.Name,
+		Address:    result.Address,
+		Device:     device,
+		rawChannel: rawChannel,
+		Channel:    rawChannel,
 		disconnectFunc: func() {
 			device.Disconnect()
 		},
 	}
 
-	// Store connected device
 	m.mu.Lock()
-	m.connected[deviceName] = simpleDevice
+	m.connected[config.Name] = simpleDevice
+	m.addressToName[result.Address.UUID.String()] = config.Name
 	m.mu.Unlock()
 
-	// Start notification handler
-	go m.handleNotifications(simpleDevice, notificationHandler)
+	go m.handleNotifications(simpleDevice, config.NotificationHandler)
 
-	fmt.Printf("🎉 %s connected and ready!\n", deviceName)
+	fmt.Printf("🎉 %s connected and ready!\n", config.Name)
 	return nil
 }
 
@@ -125,7 +238,7 @@ func (m *SimpleManager) scanForDevice(deviceName string) (bluetooth.ScanResult, 
 }
 
 // connectAndSetup establishes connection and sets up notifications
-func (m *SimpleManager) connectAndSetup(result bluetooth.ScanResult, serviceUUID, characteristicUUID bluetooth.UUID) (*bluetooth.Device, <-chan []byte, error) {
+func (m *SimpleManager) connectAndSetup(result bluetooth.ScanResult, serviceUUID, characteristicUUID bluetooth.UUID) (*bluetooth.Device, chan []byte, error) {
 	// Brief delay after stopping scan (important for macOS)
 	time.Sleep(500 * time.Millisecond)
 
@@ -172,11 +285,11 @@ func (m *SimpleManager) connectAndSetup(result bluetooth.ScanResult, serviceUUID
 
 	// Setup notifications
 	fmt.Println("🔔 Setting up notifications...")
-	channel := make(chan []byte, 10)
+	rawChannel := make(chan []byte, 10)
 
 	err = characteristic.EnableNotifications(func(data []byte) {
 		select {
-		case channel <- data:
+		case rawChannel <- data:
 		default:
 			// Channel full, drop data to prevent blocking
 			fmt.Println("⚠️  Notification dropped - channel full")
@@ -189,10 +302,10 @@ func (m *SimpleManager) connectAndSetup(result bluetooth.ScanResult, serviceUUID
 	}
 
 	fmt.Println("✅ Notifications enabled")
-	return &device, channel, nil
+	return &device, rawChannel, nil
 }
 
-// handleNotifications processes incoming notifications
+// handleNotifications processes incoming notifications until the channel is closed.
 func (m *SimpleManager) handleNotifications(device *SimpleDevice, handler func(string, []byte) error) {
 	for data := range device.Channel {
 		if handler != nil {
@@ -223,42 +336,55 @@ func (m *SimpleManager) GetConnectedDevices() map[string]*SimpleDevice {
 	return result
 }
 
-// Disconnect disconnects a specific device
+// Disconnect disconnects a specific device and cancels any pending reconnect.
 func (m *SimpleManager) Disconnect(deviceName string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	device, exists := m.connected[deviceName]
 	if !exists {
+		m.mu.Unlock()
 		return fmt.Errorf("device %s not connected", deviceName)
 	}
+
+	// Remove from maps so reconnect loop won't fire
+	delete(m.pendingConfigs, deviceName)
+	delete(m.connected, deviceName)
+	delete(m.addressToName, device.Address.UUID.String())
+	m.mu.Unlock()
 
 	if device.disconnectFunc != nil {
 		device.disconnectFunc()
 	}
+	device.closeChannel()
 
-	delete(m.connected, deviceName)
 	fmt.Printf("✅ Disconnected from %s\n", deviceName)
 	return nil
 }
 
-// Close disconnects all devices and cleans up
+// Close disconnects all devices and prevents further reconnects.
 func (m *SimpleManager) Close() error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.closing = true
 
-	for name, device := range m.connected {
+	devices := make([]*SimpleDevice, 0, len(m.connected))
+	for _, device := range m.connected {
+		devices = append(devices, device)
+	}
+	m.connected = make(map[string]*SimpleDevice)
+	m.addressToName = make(map[string]string)
+	m.mu.Unlock()
+
+	for _, device := range devices {
 		if device.disconnectFunc != nil {
 			device.disconnectFunc()
 		}
-		fmt.Printf("✅ Disconnected from %s\n", name)
+		device.closeChannel()
+		fmt.Printf("✅ Disconnected from %s\n", device.Name)
 	}
 
-	m.connected = make(map[string]*SimpleDevice)
 	return nil
 }
 
-// DeviceConfig holds configuration for a BLE device (for backward compatibility)
+// DeviceConfig holds configuration for a BLE device
 type DeviceConfig struct {
 	Name                string
 	ServiceUUID         bluetooth.UUID
@@ -289,7 +415,6 @@ func (m *Manager) ConnectDevices(configs []DeviceConfig) error {
 		return fmt.Errorf("no devices to connect")
 	}
 
-	// For simplicity, connect to each device sequentially
 	for _, config := range configs {
 		err := m.simpleManager.ConnectToDevice(
 			config.Name,
