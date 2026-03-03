@@ -92,7 +92,7 @@ func (m *SimpleManager) enable() error {
 
 // handleDisconnect is called by the adapter when a peripheral disconnects.
 func (m *SimpleManager) handleDisconnect(device bluetooth.Device) {
-	addrStr := device.Address.UUID.String()
+	addrStr := device.Address.String()
 
 	m.mu.Lock()
 	name, ok := m.addressToName[addrStr]
@@ -196,7 +196,7 @@ func (m *SimpleManager) connectDevice(config DeviceConfig) error {
 
 	m.mu.Lock()
 	m.connected[config.Name] = simpleDevice
-	m.addressToName[result.Address.UUID.String()] = config.Name
+	m.addressToName[result.Address.String()] = config.Name
 	m.mu.Unlock()
 
 	go m.handleNotifications(simpleDevice, config.NotificationHandler)
@@ -348,7 +348,7 @@ func (m *SimpleManager) Disconnect(deviceName string) error {
 	// Remove from maps so reconnect loop won't fire
 	delete(m.pendingConfigs, deviceName)
 	delete(m.connected, deviceName)
-	delete(m.addressToName, device.Address.UUID.String())
+	delete(m.addressToName, device.Address.String())
 	m.mu.Unlock()
 
 	if device.disconnectFunc != nil {
