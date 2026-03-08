@@ -298,6 +298,11 @@ func (m *SimpleManager) connectAndSetup(result bluetooth.ScanResult, serviceUUID
 	rawChannel := make(chan []byte, 10)
 
 	err = characteristic.EnableNotifications(func(data []byte) {
+		defer func() {
+			if r := recover(); r != nil {
+				// Channel was closed (device disconnected) — ignore.
+			}
+		}()
 		select {
 		case rawChannel <- data:
 		default:
