@@ -25,13 +25,14 @@ type SimpleManager struct {
 
 // SimpleDevice represents a connected BLE device
 type SimpleDevice struct {
-	Name           string
-	Address        bluetooth.Address
-	Device         *bluetooth.Device
-	Channel        <-chan []byte
-	rawChannel     chan []byte
-	disconnectFunc func()
-	closeOnce      sync.Once
+	Name            string
+	Address         bluetooth.Address
+	Device          *bluetooth.Device
+	Channel         <-chan []byte
+	rawChannel      chan []byte
+	disconnectFunc  func()
+	cancelWatchdog  func()
+	closeOnce       sync.Once
 }
 
 func (d *SimpleDevice) closeChannel() {
@@ -109,8 +110,11 @@ func (m *SimpleManager) handleDisconnect(device bluetooth.Device) {
 	delete(m.addressToName, addrStr)
 	m.mu.Unlock()
 
-	// Close the channel to unblock the handleNotifications goroutine
+	// Stop the watchdog and close the channel to unblock the handleNotifications goroutine
 	if simpleDevice != nil {
+		if simpleDevice.cancelWatchdog != nil {
+			simpleDevice.cancelWatchdog()
+		}
 		simpleDevice.closeChannel()
 	}
 
@@ -193,6 +197,12 @@ func (m *SimpleManager) connectDevice(config DeviceConfig) error {
 			device.Disconnect()
 		},
 	}
+
+	// Start a platform-specific watchdog that monitors the connection
+	// via D-Bus on Linux (where SetConnectHandler doesn't fire).
+	simpleDevice.cancelWatchdog = watchConnection(device, result.Address, func(dev bluetooth.Device) {
+		m.handleDisconnect(dev)
+	})
 
 	m.mu.Lock()
 	m.connected[config.Name] = simpleDevice
@@ -351,6 +361,9 @@ func (m *SimpleManager) Disconnect(deviceName string) error {
 	delete(m.addressToName, device.Address.String())
 	m.mu.Unlock()
 
+	if device.cancelWatchdog != nil {
+		device.cancelWatchdog()
+	}
 	if device.disconnectFunc != nil {
 		device.disconnectFunc()
 	}
@@ -374,6 +387,9 @@ func (m *SimpleManager) Close() error {
 	m.mu.Unlock()
 
 	for _, device := range devices {
+		if device.cancelWatchdog != nil {
+			device.cancelWatchdog()
+		}
 		if device.disconnectFunc != nil {
 			device.disconnectFunc()
 		}
