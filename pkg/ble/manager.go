@@ -18,6 +18,7 @@ type SimpleManager struct {
 	addressToName     map[string]string
 	pendingConfigs    map[string]DeviceConfig
 	disconnectHandler func(deviceName string, address string, err error)
+	reconnectHandler  func(deviceName string, address string)
 	mu                sync.RWMutex
 	enabled           bool
 	closing           bool
@@ -56,6 +57,13 @@ func (m *SimpleManager) SetDisconnectHandler(handler func(deviceName string, add
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.disconnectHandler = handler
+}
+
+// SetReconnectHandler sets the callback for successful device reconnections
+func (m *SimpleManager) SetReconnectHandler(handler func(deviceName string, address string)) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.reconnectHandler = handler
 }
 
 // enable initializes the BLE adapter and registers the connect/disconnect handler.
@@ -150,6 +158,19 @@ func (m *SimpleManager) reconnectLoop(config DeviceConfig) {
 		}
 
 		fmt.Printf("✅ Reconnected to %s!\n", config.Name)
+
+		m.mu.RLock()
+		handler := m.reconnectHandler
+		dev, ok := m.connected[config.Name]
+		m.mu.RUnlock()
+		if handler != nil {
+			addr := ""
+			if ok {
+				addr = dev.Address.String()
+			}
+			handler(config.Name, addr)
+		}
+
 		return
 	}
 }
@@ -428,6 +449,11 @@ func NewManager() *Manager {
 // SetDisconnectHandler sets the disconnect handler (backward compatibility)
 func (m *Manager) SetDisconnectHandler(handler func(deviceName string, address string, err error)) {
 	m.simpleManager.SetDisconnectHandler(handler)
+}
+
+// SetReconnectHandler sets the reconnect handler (backward compatibility)
+func (m *Manager) SetReconnectHandler(handler func(deviceName string, address string)) {
+	m.simpleManager.SetReconnectHandler(handler)
 }
 
 // ConnectDevices connects to multiple devices (backward compatibility)
